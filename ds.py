@@ -162,8 +162,8 @@ def automatic_login(driver, username, password, user_id=None):
     bot_log("\n📝 Starting automatic login process...", user_id)
 
     # Try automatic CAPTCHA solving first
-    for attempt in range(3):  # Limited to 3 automatic attempts
-        bot_log(f"🔄 Automatic login attempt {attempt + 1}/3", user_id)
+    for attempt in range(1):  # Limited to 1 automatic attempts
+        bot_log(f"🔄 Automatic login attempt {attempt + 1}/1", user_id)
 
         # Refresh page for each attempt
         driver.get(website_url)
