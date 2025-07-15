@@ -1,54 +1,49 @@
-# Stage 1: Build stage
-FROM python:3.11-slim as builder
-
-# Install build dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install Python packages
-COPY requirements.txt .
-RUN pip install --no-cache-dir --user -r requirements.txt
-
-# Stage 2: Runtime stage
+# Use a minimal Python 3.11 base image
 FROM python:3.11-slim
 
-# Install runtime dependencies for Firefox and EasyOCR
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    firefox-esr \
-    libglib2.0-0 \
-    libnss3 \
-    libnspr4 \
-    libatk1.0-0 \
+# Install system dependencies for Chrome
+RUN apt-get update && apt-get install -y \
+    wget \
+    gnupg \
+    unzip \
+    fonts-liberation \
+    libasound2 \
     libatk-bridge2.0-0 \
+    libatk1.0-0 \
+    libatspi2.0-0 \
     libcups2 \
-    libdrm2 \
     libdbus-1-3 \
-    libxcb1 \
-    libxkbcommon0 \
-    libx11-6 \
+    libdrm2 \
+    libgbm1 \
+    libgtk-3-0 \
+    libnspr4 \
+    libnss3 \
     libxcomposite1 \
     libxdamage1 \
-    libxext6 \
     libxfixes3 \
     libxrandr2 \
-    libgbm1 \
-    libpango-1.0-0 \
-    libcairo2 \
-    libasound2 \
+    xdg-utils \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy installed packages from builder
-COPY --from=builder /root/.local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+# Install Google Chrome
+RUN wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - \
+    && echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google.list \
+    && apt-get update \
+    && apt-get install -y google-chrome-stable \
+    && rm -rf /var/lib/apt/lists/*
 
-# Set up working directory
+# Set the working directory
 WORKDIR /app
 
-# Copy application code
+# Copy and install Python dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy the rest of the application code
 COPY . .
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
 
-# Command to run the bot
+# Default command to run your bot
 CMD ["python", "bot.py"]
