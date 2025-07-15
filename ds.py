@@ -379,7 +379,7 @@ def post_login_click_button(driver, button_element, user_id):
 
     try:
         driver.execute_script("arguments[0].click();", button_element)
-        bot_log(f"✅ Clicked '{button_text}' using JavaScript", user_id)
+        bot_log(f"✅ hit '{button_text}' using JavaScript", user_id)
         return True
     except Exception as e:
         bot_log(f"❌ JavaScript click failed for '{button_text}': {str(e)}",
@@ -389,7 +389,7 @@ def post_login_click_button(driver, button_element, user_id):
         from selenium.webdriver.common.action_chains import ActionChains
         actions = ActionChains(driver)
         actions.move_to_element(button_element).click().perform()
-        bot_log(f"✅ Clicked '{button_text}' using Action Chains", user_id)
+        bot_log(f"✅ hit '{button_text}' using Action Chains", user_id)
         return True
     except Exception as e:
         bot_log(f"❌ Action Chains click failed for '{button_text}': {str(e)}",
@@ -403,7 +403,7 @@ def post_login_click_button(driver, button_element, user_id):
             arguments[0].style.visibility = 'visible';
         """, button_element)
         button_element.click()
-        bot_log(f"✅ Clicked '{button_text}' after forcing visibility", user_id)
+        bot_log(f"✅ hit '{button_text}' after forcing visibility", user_id)
         return True
     except Exception as e:
         bot_log(
