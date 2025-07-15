@@ -1,0 +1,7 @@
+telebot
+selenium
+webdriver-manager
+easyocr
+Pillow
+requests
+pymongo

@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  bot:
+    build: .
+    environment:
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - MONGODB_URI=${MONGODB_URI}
+      - BOT_OWNER_ID=${BOT_OWNER_ID}
+      - URL=${URL}
+    volumes:
+      - .:/app
+    restart: unless-stopped
