@@ -4,30 +4,26 @@ from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.chrome.options import Options
 from logger import session_logger
 
-
 class SessionManager:
     def __init__(self):
         self.sessions = {}
-        self.busy_users = set()  # Track users who are currently in an operation
-        self.login_queue = {}  # Track login attempt timestamps
+        self.busy_users = set()
+        self.login_queue = {}
 
     def is_user_busy(self, user_id):
-        """Check if user is currently performing an operation"""
         return user_id in self.busy_users
 
     def can_attempt_login(self, user_id):
-        """Check if user can attempt login based on cooldown"""
         import time
         current_time = time.time()
         if user_id in self.login_queue:
             last_attempt = self.login_queue[user_id]
-            if current_time - last_attempt < 5:  # 5 seconds cooldown
+            if current_time - last_attempt < 5:
                 return False
         self.login_queue[user_id] = current_time
         return True
 
     def set_user_busy(self, user_id, busy=True):
-        """Set user's busy status"""
         if busy:
             self.busy_users.add(user_id)
         else:
@@ -36,9 +32,8 @@ class SessionManager:
                 del self.login_queue[user_id]
 
     def get_session(self, user_id):
-        """Get existing session or create new one"""
         session_logger.info(f"Getting session for user {user_id}")
-        
+
         if user_id in self.sessions and self.sessions[user_id]['driver']:
             session_logger.debug(f"Existing session found for user {user_id}")
             return self.sessions[user_id]
@@ -48,13 +43,20 @@ class SessionManager:
             chrome_options = Options()
             chrome_options.add_argument('--no-sandbox')
             chrome_options.add_argument('--disable-dev-shm-usage')
-            chrome_options.add_argument('--window-size=1920x1080')
+            chrome_options.add_argument('--window-size=1920,1080')
             chrome_options.add_argument('--headless=new')
             chrome_options.add_argument('--disable-gpu')
-            
-            session_logger.debug("Chrome options configured")
-            
-            driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
+            chrome_options.add_argument('--disable-software-rasterizer')
+            chrome_options.add_argument('--single-process')
+            chrome_options.add_argument('--disable-extensions')
+            chrome_options.add_argument('--disable-blink-features=AutomationControlled')
+            chrome_options.add_argument('--remote-debugging-port=9222')
+            chrome_options.binary_location = '/usr/bin/google-chrome'
+
+            driver = webdriver.Chrome(
+                service=Service(ChromeDriverManager().install()),
+                options=chrome_options
+            )
             self.sessions[user_id] = {'driver': driver}
             return self.sessions[user_id]
         except Exception as e:
@@ -62,17 +64,15 @@ class SessionManager:
             raise
 
     def close_session(self, user_id):
-        """Close and remove session"""
         if user_id in self.sessions:
             try:
                 self.sessions[user_id]['driver'].quit()
             except:
                 pass
             del self.sessions[user_id]
-        self.set_user_busy(user_id, False)  # Make sure to clear busy status
+        self.set_user_busy(user_id, False)
 
     def close_all_sessions(self):
-        """Close all active sessions"""
         for user_id in list(self.sessions.keys()):
             self.close_session(user_id)
         self.busy_users.clear()
