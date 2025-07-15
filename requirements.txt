@@ -1,5 +1,6 @@
 telebot
-playwright
+selenium
+webdriver-manager
 easyocr
 Pillow
 requests
