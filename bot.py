@@ -14,7 +14,7 @@ from db import (
 from logger import bot_logger, user_interaction_logger
 
 # Initialize bot with your token
-API_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN',"6861114840:AAGrg6EGWoljuSG2tfXCjMmbm4SiwdQA8DQ")
+API_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 bot = telebot.TeleBot(API_TOKEN)
 
 # Configure logging
