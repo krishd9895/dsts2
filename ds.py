@@ -1,7 +1,5 @@
 import requests
 import os
-from PIL import Image
-from io import BytesIO
 from selenium.webdriver.common.by import By
 from selenium.common.exceptions import NoSuchElementException
 import time
@@ -15,12 +13,10 @@ user_inputs = {}
 last_message_id = {}
 status_logs = {}
 
-
 def set_bot_instance(bot, chat_id):
     global bot_instances, chat_ids
     bot_instances[chat_id] = bot
     chat_ids[chat_id] = chat_id
-
 
 def bot_log(message, user_id=None):
     if user_id in bot_instances and user_id in chat_ids:
@@ -44,7 +40,6 @@ def bot_log(message, user_id=None):
     else:
         bot_logger.debug(message)
 
-
 def clear_status(user_id):
     """Clear the status message for a user"""
     if user_id in last_message_id:
@@ -54,7 +49,6 @@ def clear_status(user_id):
         except:
             pass  # Ignore if message already deleted
         del last_message_id[user_id]
-
 
 def bot_send_image(image_path, caption, user_id):
     if user_id in bot_instances and user_id in chat_ids:
@@ -67,7 +61,6 @@ def bot_send_image(image_path, caption, user_id):
             print(f"Failed to send image to bot: {e}")
     else:
         print(f"Would send image: {image_path} with caption: {caption}")
-
 
 def bot_input(prompt, user_id=None):
     if user_id in bot_instances and user_id in chat_ids:
@@ -87,11 +80,10 @@ def bot_input(prompt, user_id=None):
         return response
     return input(prompt)
 
-
 # --------------------------
 # CONFIGURATION
 # --------------------------
-website_url = os.getenv('URL', "https://des.telangana.gov.in/")
+website_url = os.getenv('URL')
 max_retries = 3
 
 # XPaths (Pre-Login)
@@ -124,13 +116,12 @@ POST_LOGIN_XPATHS = {
 }
 
 # RapidAPI OCR configuration
-RAPIDAPI_KEY = os.getenv('RAPIDAPI_KEY',"640f490022ms6b4jsn700c18cb7785")
+RAPIDAPI_KEY = os.getenv('RAPIDAPI_KEY', "640f18cb7785")
 RAPIDAPI_OCR_URL = "https://ocr-extract-text.p.rapidapi.com/ocr"
 RAPIDAPI_HEADERS = {
     "x-rapidapi-key": RAPIDAPI_KEY,
     "x-rapidapi-host": "ocr-extract-text.p.rapidapi.com"
 }
-
 
 # --------------------------
 # LOGIN FUNCTIONS
@@ -166,7 +157,6 @@ def handle_login_attempt(user_id, username, password):
     )
     return success
 
-
 def automatic_login(driver, username, password, user_id=None):
     """Attempt automatic login with OCR-based CAPTCHA solving"""
     bot_log("\n📝 Starting automatic login process...", user_id)
@@ -194,8 +184,7 @@ def automatic_login(driver, username, password, user_id=None):
                                                  XPATHS["login_failure"])
             if error_element:
                 error_text = error_element[0].text.strip()
-                if "invalid" in error_text.lower(
-                ) or "incorrect" in error_text.lower():
+                if "invalid" in error_text.lower() or "incorrect" in error_text.lower():
                     bot_log(
                         "❌ Login Failed: Invalid credentials. Please try again with correct username and password.",
                         user_id)
@@ -211,7 +200,6 @@ def automatic_login(driver, username, password, user_id=None):
     # If automatic attempts fail, switch to manual entry
     bot_log("🔄 Switching to manual CAPTCHA entry", user_id)
     return manual_login(driver, username, password, user_id)
-
 
 def manual_login(driver, username, password, user_id):
     """Manual login handler"""
@@ -242,8 +230,7 @@ def manual_login(driver, username, password, user_id):
         error_element = driver.find_elements(By.XPATH, XPATHS["login_failure"])
         if error_element:
             error_text = error_element[0].text.strip()
-            if "invalid" in error_text.lower(
-            ) or "incorrect" in error_text.lower():
+            if "invalid" in error_text.lower() or "incorrect" in error_text.lower():
                 bot_log(
                     "❌ Login Failed: Invalid credentials. Please try again with correct username and password.",
                     user_id)
@@ -256,7 +243,6 @@ def manual_login(driver, username, password, user_id):
         return True
 
     return False
-
 
 # --------------------------
 # LOGIN HELPER FUNCTIONS
@@ -279,22 +265,13 @@ def enter_credentials(driver, username, password, user_id):
         bot_log(f"❌ Error entering credentials: {str(e)}", user_id)
         return False
 
-
 def process_captcha(driver, user_id):
-    """Automatic captcha processing using RapidAPI OCR"""
+    """Automatic captcha processing using RapidAPI OCR with direct URL"""
     try:
         captcha_element = driver.find_element(By.XPATH, XPATHS["captcha_img"])
         captcha_url = captcha_element.get_attribute("src")
         
-        # Save captcha image locally
-        response = requests.get(captcha_url)
-        Image.open(BytesIO(response.content)).save("captcha_auto.png")
-        
-        # Upload image to a temporary hosting service or use base64
-        # For this implementation, we'll use the captcha_url directly if it's accessible
-        # Otherwise, we need to host the image temporarily
-        
-        # Try using the direct captcha URL first
+        # Use the CAPTCHA URL directly in the RapidAPI request
         querystring = {"url": captcha_url}
         
         try:
@@ -309,6 +286,8 @@ def process_captcha(driver, user_id):
                     captcha_input.clear()
                     captcha_input.send_keys(captcha_text)
                     return captcha_text
+                else:
+                    bot_log("❌ No text recognized from CAPTCHA", user_id)
             else:
                 bot_log(f"❌ OCR API error: {ocr_response.status_code}", user_id)
         except Exception as api_error:
@@ -318,7 +297,6 @@ def process_captcha(driver, user_id):
     except Exception as e:
         bot_log(f"❌ Captcha processing failed: {str(e)}", user_id)
         return None
-
 
 def process_captcha_manual(driver, user_id):
     """Manual captcha handling"""
@@ -358,7 +336,6 @@ def process_captcha_manual(driver, user_id):
         bot_log(f"❌ Manual captcha failed: {str(e)}", user_id)
         return None
 
-
 def submit_login(driver, user_id):
     """Click login button"""
     try:
@@ -367,7 +344,6 @@ def submit_login(driver, user_id):
         time.sleep(5)
     except Exception as e:
         bot_log(f"❌ Login submission failed: {str(e)}", user_id)
-
 
 def check_login_result(driver, user_id):
     """Check login success/failure with simple text content logging"""
@@ -392,7 +368,6 @@ def check_login_result(driver, user_id):
     except Exception as e:
         bot_log(f"❌ Login check failed: {str(e)}", user_id)
         return False
-
 
 # --------------------------
 # POST-LOGIN OPERATIONS
@@ -437,7 +412,6 @@ def post_login_click_button(driver, button_element, user_id):
 
     return False
 
-
 def extract_form_data(driver, user_id):
     """Extracts and prints relevant information from the data entry form dynamically."""
     try:
@@ -471,7 +445,6 @@ def extract_form_data(driver, user_id):
     except Exception as e:
         bot_log(f"❌ Error extracting form information: {str(e)}", user_id)
 
-
 def post_login_operations(user_id):
     """Execute actions after successful login"""
     clear_status(user_id)  # Clear previous status
@@ -483,7 +456,7 @@ def post_login_operations(user_id):
 
     try:
         # Clean up captcha files
-        for file in ["captcha_auto.png", "captcha_manual.png"]:
+        for file in ["captcha_manual.png"]:  # Only clean up manual captcha file
             if os.path.exists(file):
                 os.remove(file)
 
