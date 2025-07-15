@@ -1,6 +1,5 @@
 telebot
 selenium
 webdriver-manager
-Pillow
 requests
 pymongo
