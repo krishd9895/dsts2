@@ -116,7 +116,7 @@ POST_LOGIN_XPATHS = {
 }
 
 # RapidAPI OCR configuration
-RAPIDAPI_KEY = os.getenv('RAPIDAPI_KEY', "640f18cb7785")
+RAPIDAPI_KEY = os.getenv('RAPIDAPI_KEY')
 RAPIDAPI_OCR_URL = "https://ocr-extract-text.p.rapidapi.com/ocr"
 RAPIDAPI_HEADERS = {
     "x-rapidapi-key": RAPIDAPI_KEY,
