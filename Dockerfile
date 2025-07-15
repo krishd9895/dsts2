@@ -1,21 +1,11 @@
-# Build stage
-FROM mcr.microsoft.com/playwright/python:v1.40.0-jammy AS builder
-
-# Set up working directory
-WORKDIR /app
-
-# Copy and install requirements
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Final stage
 FROM mcr.microsoft.com/playwright/python:v1.40.0-jammy
 
 # Set up working directory
 WORKDIR /app
 
-# Copy Python packages from builder
-COPY --from=builder /usr/local/lib/python3.11/site-packages/ /usr/local/lib/python3.11/site-packages/
+# Copy requirements and install Python dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY . .
