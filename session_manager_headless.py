@@ -1,7 +1,4 @@
-from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from webdriver_manager.chrome import ChromeDriverManager
-from selenium.webdriver.chrome.options import Options
+from playwright.sync_api import sync_playwright
 from logger import session_logger
 
 
@@ -10,6 +7,7 @@ class SessionManager:
         self.sessions = {}
         self.busy_users = set()  # Track users who are currently in an operation
         self.login_queue = {}  # Track login attempt timestamps
+        self.playwright = None
 
     def is_user_busy(self, user_id):
         """Check if user is currently performing an operation"""
@@ -39,33 +37,41 @@ class SessionManager:
         """Get existing session or create new one"""
         session_logger.info(f"Getting session for user {user_id}")
         
-        if user_id in self.sessions and self.sessions[user_id]['driver']:
+        if user_id in self.sessions and self.sessions[user_id].get('context'):
             session_logger.debug(f"Existing session found for user {user_id}")
             return self.sessions[user_id]
 
-        session_logger.info(f"Creating new Chrome session for user {user_id}")
+        session_logger.info(f"Creating new browser session for user {user_id}")
         try:
-            chrome_options = Options()
-            chrome_options.add_argument('--no-sandbox')
-            chrome_options.add_argument('--disable-dev-shm-usage')
-            chrome_options.add_argument('--window-size=1920x1080')
-            chrome_options.add_argument('--headless=new')
-            chrome_options.add_argument('--disable-gpu')
+            if not self.playwright:
+                self.playwright = sync_playwright().start()
             
-            session_logger.debug("Chrome options configured")
+            browser = self.playwright.chromium.launch(
+                headless=True,
+                args=['--no-sandbox', '--disable-dev-shm-usage']
+            )
+            context = browser.new_context(
+                viewport={'width': 1920, 'height': 1080}
+            )
+            page = context.new_page()
             
-            driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
-            self.sessions[user_id] = {'driver': driver}
+            self.sessions[user_id] = {
+                'browser': browser,
+                'context': context,
+                'page': page
+            }
             return self.sessions[user_id]
         except Exception as e:
-            session_logger.error(f"Failed to create Chrome session: {str(e)}")
+            session_logger.error(f"Failed to create browser session: {str(e)}")
             raise
 
     def close_session(self, user_id):
         """Close and remove session"""
         if user_id in self.sessions:
             try:
-                self.sessions[user_id]['driver'].quit()
+                self.sessions[user_id]['page'].close()
+                self.sessions[user_id]['context'].close()
+                self.sessions[user_id]['browser'].close()
             except:
                 pass
             del self.sessions[user_id]
@@ -75,6 +81,9 @@ class SessionManager:
         """Close all active sessions"""
         for user_id in list(self.sessions.keys()):
             self.close_session(user_id)
+        if self.playwright:
+            self.playwright.stop()
+            self.playwright = None
         self.busy_users.clear()
         self.login_queue.clear()
 
