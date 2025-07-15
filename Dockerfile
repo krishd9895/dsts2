@@ -1,8 +1,8 @@
-# Use a minimal Python 3.11 base image
+# Start from the official Python slim image
 FROM python:3.11-slim
 
-# Install system dependencies for Chrome
-RUN apt-get update && apt-get install -y \
+# Install system dependencies required for Chrome and Selenium
+RUN apt-get update && apt-get install -y --no-install-recommends \
     wget \
     gnupg \
     unzip \
@@ -18,32 +18,47 @@ RUN apt-get update && apt-get install -y \
     libgtk-3-0 \
     libnspr4 \
     libnss3 \
+    libx11-xcb1 \
     libxcomposite1 \
     libxdamage1 \
+    libxext6 \
     libxfixes3 \
     libxrandr2 \
+    libxi6 \
+    libxrender1 \
+    libxtst6 \
+    libxss1 \
+    libgl1 \
+    libpango-1.0-0 \
+    libpangocairo-1.0-0 \
+    libjpeg-dev \
+    libxshmfence1 \
     xdg-utils \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Google Chrome
-RUN wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - \
-    && echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google.list \
+# Add Google Chrome repository and install Chrome
+RUN wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | apt-key add - \
+    && echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list \
     && apt-get update \
-    && apt-get install -y google-chrome-stable \
+    && apt-get install -y --no-install-recommends google-chrome-stable \
     && rm -rf /var/lib/apt/lists/*
 
-# Set the working directory
+# Set display port to avoid crash (not strictly needed for headless, but helps some builds)
+ENV DISPLAY=:99
+
+# Set working directory
 WORKDIR /app
 
-# Copy and install Python dependencies
+# Install Python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the rest of the application code
+# Copy application code
 COPY . .
 
-# Set environment variables
+# Set environment variables for unbuffered output
 ENV PYTHONUNBUFFERED=1
 
-# Default command to run your bot
+# Default command
 CMD ["python", "bot.py"]
