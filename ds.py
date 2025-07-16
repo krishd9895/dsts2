@@ -502,11 +502,11 @@ def post_login_operations(user_id):
         try:
             input_field = driver.find_element(
                 By.XPATH,
-                "/html/body/form/div[4]/div/div/div/div/div/div[2]/div[2]/div/div/div/div/div/input"
+                "/html/body/form/div[4]/div/div/div/div/div/div/div[2]/div/div/div[15]/input"
             )
             save_button = driver.find_element(
                 By.XPATH,
-                "/html/body/form/div[4]/div/div/div/div/div/div[2]/div[2]/div/div/div/div/ul/input"
+                "/html/body/form/div[4]/div/div/div/div/div/div/div[2]/div/div/div[19]/input"
             )
 
             if input_field.is_displayed() and save_button.is_displayed():
