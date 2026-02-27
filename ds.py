@@ -201,9 +201,14 @@ def handle_login_attempt(user_id, username, password):
         driver = session['driver']
         login_logger.debug("Session and driver obtained successfully")
     except Exception as e:
-        login_logger.error(f"Failed to get session/driver: {str(e)}")
-        bot_log("❌ Login failed: Could not initialize browser session",
-                user_id)
+        error_text = str(e)
+        login_logger.error(f"Failed to get session/driver: {error_text}")
+        if "ChromeDriver not found" in error_text or "Unable to obtain driver" in error_text:
+            bot_log("❌ Login failed: ChromeDriver not found. Install with `pkg install chromium-driver` or set CHROMEDRIVER_PATH.", user_id)
+        elif "Chromium/Chrome binary not found" in error_text:
+            bot_log("❌ Login failed: Chromium not found. Install with `pkg install chromium` or set CHROME_BINARY.", user_id)
+        else:
+            bot_log("❌ Login failed: Could not initialize browser session", user_id)
         return False
 
     if not username or not password:

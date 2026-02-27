@@ -1,4 +1,6 @@
 import os
+import shutil
+from pathlib import Path
 
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
@@ -35,15 +37,42 @@ class SessionManager:
             if user_id in self.login_queue:
                 del self.login_queue[user_id]
 
-    def _build_driver(self):
-        chrome_binary = os.getenv(
-            "CHROME_BINARY",
+    def _resolve_chrome_binary(self):
+        env_binary = os.getenv("CHROME_BINARY", "").strip()
+        candidates = [
+            env_binary,
+            shutil.which("chromium-browser"),
+            shutil.which("chromium"),
+            shutil.which("google-chrome"),
             "/data/data/com.termux/files/usr/bin/chromium-browser",
+            "/data/data/com.termux/files/usr/bin/chromium",
+        ]
+        for candidate in candidates:
+            if candidate and Path(candidate).exists():
+                return candidate
+        raise FileNotFoundError(
+            "Chromium/Chrome binary not found. Set CHROME_BINARY or install chromium in Termux: pkg install chromium"
         )
-        chromedriver_path = os.getenv(
-            "CHROMEDRIVER_PATH",
+
+    def _resolve_chromedriver_path(self):
+        env_driver = os.getenv("CHROMEDRIVER_PATH", "").strip()
+        candidates = [
+            env_driver,
+            shutil.which("chromedriver"),
+            shutil.which("chromium-driver"),
             "/data/data/com.termux/files/usr/bin/chromedriver",
+            "/data/data/com.termux/files/usr/bin/chromium-driver",
+        ]
+        for candidate in candidates:
+            if candidate and Path(candidate).exists():
+                return candidate
+        raise FileNotFoundError(
+            "ChromeDriver not found. Install it in Termux (pkg install chromium-driver) or set CHROMEDRIVER_PATH."
         )
+
+    def _build_driver(self):
+        chrome_binary = self._resolve_chrome_binary()
+        chromedriver_path = self._resolve_chromedriver_path()
 
         chrome_options = Options()
         chrome_options.add_argument("--no-sandbox")

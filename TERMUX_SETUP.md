@@ -3,7 +3,7 @@
 ## 1) Install system packages in Termux
 ```bash
 pkg update && pkg upgrade -y
-pkg install -y python chromium tesseract
+pkg install -y python chromium chromium-driver tesseract
 ```
 
 ## 2) Install Python dependencies
@@ -34,8 +34,8 @@ export MONGO_URI="..."
 export RAPIDAPI_KEY="..."
 
 # Optional overrides for Termux binaries
-export CHROME_BINARY="/data/data/com.termux/files/usr/bin/chromium-browser"
-export CHROMEDRIVER_PATH="/data/data/com.termux/files/usr/bin/chromedriver"
+export CHROME_BINARY=""
+export CHROMEDRIVER_PATH=""
 export TESSERACT_CMD="tesseract"
 
 # Optional: local JSON credentials file path
@@ -43,7 +43,13 @@ export LOCAL_DB_PATH="credentials.json"
 
 ```
 
-## 4) Start bot
+## 4) Verify binaries
+```bash
+which chromium-browser || which chromium
+which chromedriver || which chromium-driver
+```
+
+## 5) Start bot
 ```bash
 python bot.py
 ```
