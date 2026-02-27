@@ -23,22 +23,11 @@ if [ ! -f ".env" ] && [ -f ".env.example" ]; then
   echo "[i] Created .env from .env.example. Edit .env before first run."
 fi
 
-BROWSER_MODE="${BROWSER:-chrome}"
-
-if [ "$BROWSER_MODE" = "firefox" ]; then
-  if ! command -v firefox >/dev/null 2>&1; then
-    echo "[!] Firefox not found. Install: pkg install -y x11-repo && pkg install -y firefox"
-  fi
-  if ! command -v geckodriver >/dev/null 2>&1; then
-    echo "[!] GeckoDriver not found. Install: pkg install -y geckodriver"
-  fi
-else
-  if ! command -v chromium-browser >/dev/null 2>&1 && ! command -v chromium >/dev/null 2>&1; then
-    echo "[!] Chromium not found. Install: pkg install -y chromium"
-  fi
-  if ! command -v chromedriver >/dev/null 2>&1 && ! command -v chromium-driver >/dev/null 2>&1; then
-    echo "[!] ChromeDriver not found. Install: pkg install -y chromium-driver"
-  fi
+if ! command -v firefox >/dev/null 2>&1; then
+  echo "[!] Firefox not found. Install: pkg install -y x11-repo && pkg install -y firefox"
+fi
+if ! command -v geckodriver >/dev/null 2>&1; then
+  echo "[!] GeckoDriver not found. Install: pkg install -y geckodriver"
 fi
 
 python bot.py

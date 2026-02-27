@@ -203,12 +203,8 @@ def handle_login_attempt(user_id, username, password):
     except Exception as e:
         error_text = str(e)
         login_logger.error(f"Failed to get session/driver: {error_text}")
-        if "ChromeDriver not found" in error_text or "Unable to obtain driver" in error_text:
-            bot_log("❌ Login failed: ChromeDriver not found. Install with `pkg install chromium-driver` or set CHROMEDRIVER_PATH.", user_id)
-        elif "GeckoDriver not found" in error_text:
+        if "GeckoDriver not found" in error_text or "Unable to obtain driver" in error_text:
             bot_log("❌ Login failed: GeckoDriver not found. Install with `pkg install geckodriver` or set GECKODRIVER_PATH.", user_id)
-        elif "Chromium/Chrome binary not found" in error_text:
-            bot_log("❌ Login failed: Chromium not found. Install with `pkg install chromium` or set CHROME_BINARY.", user_id)
         elif "Firefox binary not found" in error_text:
             bot_log("❌ Login failed: Firefox not found. Install with `pkg install firefox` or set FIREFOX_BINARY.", user_id)
         else:
