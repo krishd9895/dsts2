@@ -21,6 +21,7 @@ Create a `.env` file (or export manually):
 export TELEGRAM_BOT_TOKEN="..."
 export BOT_OWNER_ID="..."
 export URL="..."
+# Optional: use MongoDB if available
 export MONGO_URI="..."
 
 # Optional RapidAPI fallback (used only if local OCR fails)
@@ -30,6 +31,10 @@ export RAPIDAPI_KEY="..."
 export CHROME_BINARY="/data/data/com.termux/files/usr/bin/chromium-browser"
 export CHROMEDRIVER_PATH="/data/data/com.termux/files/usr/bin/chromedriver"
 export TESSERACT_CMD="tesseract"
+
+# Optional: local JSON credentials file path
+export LOCAL_DB_PATH="credentials.json"
+
 ```
 
 ## 4) Start bot
@@ -40,4 +45,5 @@ python bot.py
 ## Notes
 - Local OCR (Tesseract) is attempted first for CAPTCHA.
 - RapidAPI OCR is used only as fallback.
+- If MongoDB/pymongo is unavailable on your device, the bot automatically uses `credentials.json` local storage.
 - Docker and Flask keep-alive are not required anymore.
