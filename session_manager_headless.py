@@ -3,8 +3,10 @@ import shutil
 from pathlib import Path
 
 from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.chrome.options import Options as ChromeOptions
+from selenium.webdriver.chrome.service import Service as ChromeService
+from selenium.webdriver.firefox.options import Options as FirefoxOptions
+from selenium.webdriver.firefox.service import Service as FirefoxService
 
 from logger import session_logger
 
@@ -36,6 +38,13 @@ class SessionManager:
             self.busy_users.discard(user_id)
             if user_id in self.login_queue:
                 del self.login_queue[user_id]
+
+    def _resolve_browser_name(self):
+        browser = os.getenv("BROWSER", "chrome").strip().lower()
+        if browser in {"chrome", "chromium", "firefox"}:
+            return browser
+        session_logger.warning("Unsupported BROWSER=%s, defaulting to chrome", browser)
+        return "chrome"
 
     def _resolve_chrome_binary(self):
         env_binary = os.getenv("CHROME_BINARY", "").strip()
@@ -70,29 +79,80 @@ class SessionManager:
             "ChromeDriver not found. Install it in Termux (pkg install chromium-driver) or set CHROMEDRIVER_PATH."
         )
 
-    def _build_driver(self):
+    def _resolve_firefox_binary(self):
+        env_binary = os.getenv("FIREFOX_BINARY", "").strip()
+        candidates = [
+            env_binary,
+            shutil.which("firefox"),
+            "/data/data/com.termux/files/usr/bin/firefox",
+        ]
+        for candidate in candidates:
+            if candidate and Path(candidate).exists():
+                return candidate
+        raise FileNotFoundError(
+            "Firefox binary not found. Set FIREFOX_BINARY or install firefox in Termux: pkg install firefox"
+        )
+
+    def _resolve_geckodriver_path(self):
+        env_driver = os.getenv("GECKODRIVER_PATH", "").strip()
+        candidates = [
+            env_driver,
+            shutil.which("geckodriver"),
+            "/data/data/com.termux/files/usr/bin/geckodriver",
+        ]
+        for candidate in candidates:
+            if candidate and Path(candidate).exists():
+                return candidate
+        raise FileNotFoundError(
+            "GeckoDriver not found. Install it in Termux (pkg install geckodriver) or set GECKODRIVER_PATH."
+        )
+
+    def _build_chrome_driver(self):
         chrome_binary = self._resolve_chrome_binary()
         chromedriver_path = self._resolve_chromedriver_path()
 
-        chrome_options = Options()
-        chrome_options.add_argument("--no-sandbox")
-        chrome_options.add_argument("--disable-dev-shm-usage")
-        chrome_options.add_argument("--headless=new")
-        chrome_options.add_argument("--disable-gpu")
-        chrome_options.add_argument("--window-size=1280,720")
-        chrome_options.add_argument("--disable-blink-features=AutomationControlled")
-        chrome_options.binary_location = chrome_binary
+        options = ChromeOptions()
+        options.add_argument("--no-sandbox")
+        options.add_argument("--disable-dev-shm-usage")
+        options.add_argument("--headless=new")
+        options.add_argument("--disable-gpu")
+        options.add_argument("--window-size=1280,720")
+        options.add_argument("--disable-blink-features=AutomationControlled")
+        options.binary_location = chrome_binary
 
         session_logger.info(
             "Starting Chromium with binary=%s chromedriver=%s",
             chrome_binary,
             chromedriver_path,
         )
-
         return webdriver.Chrome(
-            service=Service(executable_path=chromedriver_path),
-            options=chrome_options,
+            service=ChromeService(executable_path=chromedriver_path),
+            options=options,
         )
+
+    def _build_firefox_driver(self):
+        firefox_binary = self._resolve_firefox_binary()
+        geckodriver_path = self._resolve_geckodriver_path()
+
+        options = FirefoxOptions()
+        options.add_argument("-headless")
+        options.binary_location = firefox_binary
+
+        session_logger.info(
+            "Starting Firefox with binary=%s geckodriver=%s",
+            firefox_binary,
+            geckodriver_path,
+        )
+        return webdriver.Firefox(
+            service=FirefoxService(executable_path=geckodriver_path),
+            options=options,
+        )
+
+    def _build_driver(self):
+        browser = self._resolve_browser_name()
+        if browser == "firefox":
+            return self._build_firefox_driver()
+        return self._build_chrome_driver()
 
     def get_session(self, user_id):
         session_logger.info(f"Getting session for user {user_id}")
@@ -101,13 +161,13 @@ class SessionManager:
             session_logger.debug(f"Existing session found for user {user_id}")
             return self.sessions[user_id]
 
-        session_logger.info(f"Creating new Chrome session for user {user_id}")
+        session_logger.info(f"Creating new browser session for user {user_id}")
         try:
             driver = self._build_driver()
             self.sessions[user_id] = {"driver": driver}
             return self.sessions[user_id]
         except Exception as e:
-            session_logger.error(f"Failed to create Chrome session: {str(e)}")
+            session_logger.error(f"Failed to create browser session: {str(e)}")
             raise
 
     def close_session(self, user_id):
