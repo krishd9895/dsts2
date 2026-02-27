@@ -3,8 +3,12 @@ import os
 from logging.handlers import RotatingFileHandler
 from collections import deque
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 # Bot owner ID for logs access
-BOT_OWNER_ID = int(os.getenv('BOT_OWNER_ID'))
+BOT_OWNER_ID = int(os.getenv('BOT_OWNER_ID', '0'))
 MAX_LOG_LINES = 6000
 
 def trim_log_file(file_path, max_lines):
