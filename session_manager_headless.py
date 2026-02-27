@@ -37,6 +37,10 @@ class SessionManager:
             if user_id in self.login_queue:
                 del self.login_queue[user_id]
 
+
+    def _is_low_bandwidth_mode(self):
+        return os.getenv("LOW_BANDWIDTH_MODE", "1").strip().lower() in {"1", "true", "yes", "on"}
+
     def _resolve_firefox_binary(self):
         env_binary = os.getenv("FIREFOX_BINARY", "").strip()
         candidates = [
@@ -68,15 +72,27 @@ class SessionManager:
     def _build_driver(self):
         firefox_binary = self._resolve_firefox_binary()
         geckodriver_path = self._resolve_geckodriver_path()
+        low_bandwidth_mode = self._is_low_bandwidth_mode()
 
         options = FirefoxOptions()
         options.add_argument("-headless")
         options.binary_location = firefox_binary
+        options.page_load_strategy = "eager"
+
+        if low_bandwidth_mode:
+            options.set_preference("permissions.default.image", 2)
+            options.set_preference("media.autoplay.default", 5)
+            options.set_preference("media.hardware-video-decoding.enabled", False)
+            options.set_preference("webgl.disabled", True)
+            options.set_preference("gfx.webrender.all", False)
+            options.set_preference("browser.display.use_document_fonts", 0)
+            options.set_preference("network.http.speculative-parallel-limit", 0)
 
         session_logger.info(
-            "Starting Firefox with binary=%s geckodriver=%s",
+            "Starting Firefox with binary=%s geckodriver=%s low_bandwidth_mode=%s",
             firefox_binary,
             geckodriver_path,
+            low_bandwidth_mode,
         )
         return webdriver.Firefox(
             service=FirefoxService(executable_path=geckodriver_path),

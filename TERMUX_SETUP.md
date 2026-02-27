@@ -31,6 +31,7 @@ URL="..."
 RAPIDAPI_KEY=""
 FIREFOX_BINARY=""
 GECKODRIVER_PATH=""
+LOW_BANDWIDTH_MODE="1"
 LOCAL_DB_PATH="credentials.json"
 ```
 
@@ -52,6 +53,7 @@ bash termux_run_bot.sh
 
 ## Notes
 - The bot uses Firefox + GeckoDriver only.
+- `LOW_BANDWIDTH_MODE=1` (default) disables heavy graphics (images/video/WebGL/fonts) to help on slow networks while keeping core form flow.
 - Local OCR (Tesseract) is attempted first for CAPTCHA.
 - RapidAPI OCR is used only as fallback.
 - If MongoDB/pymongo is unavailable, the bot automatically uses `credentials.json` local storage.
