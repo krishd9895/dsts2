@@ -1,8 +1,11 @@
+import os
+
 from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
+
 from logger import session_logger
+
 
 class SessionManager:
     def __init__(self):
@@ -15,6 +18,7 @@ class SessionManager:
 
     def can_attempt_login(self, user_id):
         import time
+
         current_time = time.time()
         if user_id in self.login_queue:
             last_attempt = self.login_queue[user_id]
@@ -31,33 +35,47 @@ class SessionManager:
             if user_id in self.login_queue:
                 del self.login_queue[user_id]
 
+    def _build_driver(self):
+        chrome_binary = os.getenv(
+            "CHROME_BINARY",
+            "/data/data/com.termux/files/usr/bin/chromium-browser",
+        )
+        chromedriver_path = os.getenv(
+            "CHROMEDRIVER_PATH",
+            "/data/data/com.termux/files/usr/bin/chromedriver",
+        )
+
+        chrome_options = Options()
+        chrome_options.add_argument("--no-sandbox")
+        chrome_options.add_argument("--disable-dev-shm-usage")
+        chrome_options.add_argument("--headless=new")
+        chrome_options.add_argument("--disable-gpu")
+        chrome_options.add_argument("--window-size=1280,720")
+        chrome_options.add_argument("--disable-blink-features=AutomationControlled")
+        chrome_options.binary_location = chrome_binary
+
+        session_logger.info(
+            "Starting Chromium with binary=%s chromedriver=%s",
+            chrome_binary,
+            chromedriver_path,
+        )
+
+        return webdriver.Chrome(
+            service=Service(executable_path=chromedriver_path),
+            options=chrome_options,
+        )
+
     def get_session(self, user_id):
         session_logger.info(f"Getting session for user {user_id}")
 
-        if user_id in self.sessions and self.sessions[user_id]['driver']:
+        if user_id in self.sessions and self.sessions[user_id]["driver"]:
             session_logger.debug(f"Existing session found for user {user_id}")
             return self.sessions[user_id]
 
         session_logger.info(f"Creating new Chrome session for user {user_id}")
         try:
-            chrome_options = Options()
-            chrome_options.add_argument('--no-sandbox')
-            chrome_options.add_argument('--disable-dev-shm-usage')
-            chrome_options.add_argument('--window-size=1920,1080')
-            chrome_options.add_argument('--headless=new')
-            chrome_options.add_argument('--disable-gpu')
-            chrome_options.add_argument('--disable-software-rasterizer')
-            chrome_options.add_argument('--single-process')
-            chrome_options.add_argument('--disable-extensions')
-            chrome_options.add_argument('--disable-blink-features=AutomationControlled')
-            chrome_options.add_argument('--remote-debugging-port=9222')
-            chrome_options.binary_location = '/usr/bin/google-chrome'
-
-            driver = webdriver.Chrome(
-                service=Service(ChromeDriverManager().install()),
-                options=chrome_options
-            )
-            self.sessions[user_id] = {'driver': driver}
+            driver = self._build_driver()
+            self.sessions[user_id] = {"driver": driver}
             return self.sessions[user_id]
         except Exception as e:
             session_logger.error(f"Failed to create Chrome session: {str(e)}")
@@ -66,8 +84,8 @@ class SessionManager:
     def close_session(self, user_id):
         if user_id in self.sessions:
             try:
-                self.sessions[user_id]['driver'].quit()
-            except:
+                self.sessions[user_id]["driver"].quit()
+            except Exception:
                 pass
             del self.sessions[user_id]
         self.set_user_busy(user_id, False)

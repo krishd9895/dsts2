@@ -12,7 +12,6 @@ from db import (
     remove_all_user_credentials
 )
 from logger import bot_logger, user_interaction_logger
-from webserver import keep_alive
 
 # Initialize bot with your token
 API_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
@@ -492,7 +491,6 @@ def handle_user_input(message):
 
             del user_states[user_id]  # Clear the state
 
-keep_alive()
 # Start the bot
 if __name__ == '__main__':
     bot_logger.info('Starting bot...')

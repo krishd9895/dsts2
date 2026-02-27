@@ -1,10 +1,19 @@
-import requests
 import os
+import re
+
+import requests
 from selenium.webdriver.common.by import By
 from selenium.common.exceptions import NoSuchElementException
 import time
 from session_manager_headless import session_manager
 from logger import login_logger, bot_logger
+
+try:
+    from PIL import Image
+    import pytesseract
+except ImportError:
+    Image = None
+    pytesseract = None
 
 # Bot instance handling
 bot_instances = {}
@@ -122,6 +131,62 @@ RAPIDAPI_HEADERS = {
     "x-rapidapi-key": RAPIDAPI_KEY,
     "x-rapidapi-host": "ocr-extract-text.p.rapidapi.com"
 }
+
+LOCAL_TESSERACT_CMD = os.getenv("TESSERACT_CMD", "tesseract")
+
+
+def normalize_captcha_text(raw_text):
+    return re.sub(r"[^A-Za-z0-9]", "", raw_text or "").strip()
+
+
+def solve_captcha_locally(captcha_path, user_id):
+    if Image is None or pytesseract is None:
+        bot_log("⚠️ Local OCR libraries are not installed; skipping local OCR", user_id)
+        return None
+
+    try:
+        pytesseract.pytesseract.tesseract_cmd = LOCAL_TESSERACT_CMD
+        text = pytesseract.image_to_string(
+            Image.open(captcha_path),
+            config="--psm 8 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789",
+        )
+        text = normalize_captcha_text(text)
+        if text:
+            bot_log(f"🧠 Local OCR recognized CAPTCHA: {text}", user_id)
+            return text
+    except Exception as local_ocr_error:
+        bot_log(f"⚠️ Local OCR failed: {str(local_ocr_error)}", user_id)
+
+    return None
+
+
+def solve_captcha_with_rapidapi(captcha_url, user_id):
+    if not RAPIDAPI_KEY:
+        bot_log("⚠️ RAPIDAPI_KEY not set; skipping RapidAPI OCR fallback", user_id)
+        return None
+
+    try:
+        response = requests.get(
+            RAPIDAPI_OCR_URL,
+            headers=RAPIDAPI_HEADERS,
+            params={"url": captcha_url},
+            timeout=30,
+        )
+        if response.status_code != 200:
+            bot_log(f"❌ OCR API error: {response.status_code}", user_id)
+            return None
+
+        data = response.json()
+        text = normalize_captcha_text(data.get("text", ""))
+        if text:
+            bot_log(f"🌐 RapidAPI OCR recognized CAPTCHA: {text}", user_id)
+            return text
+
+        bot_log("❌ RapidAPI OCR returned empty text", user_id)
+    except Exception as api_error:
+        bot_log(f"❌ OCR API request failed: {str(api_error)}", user_id)
+
+    return None
 
 # --------------------------
 # LOGIN FUNCTIONS
@@ -266,37 +331,34 @@ def enter_credentials(driver, username, password, user_id):
         return False
 
 def process_captcha(driver, user_id):
-    """Automatic captcha processing using RapidAPI OCR with direct URL"""
+    """Automatic captcha processing using local OCR first, then RapidAPI fallback"""
     try:
         captcha_element = driver.find_element(By.XPATH, XPATHS["captcha_img"])
         captcha_url = captcha_element.get_attribute("src")
-        
-        # Use the CAPTCHA URL directly in the RapidAPI request
-        querystring = {"url": captcha_url}
-        
-        try:
-            ocr_response = requests.get(RAPIDAPI_OCR_URL, headers=RAPIDAPI_HEADERS, params=querystring)
-            if ocr_response.status_code == 200:
-                data = ocr_response.json()
-                captcha_text = data.get("text", "").replace(" ", "").strip()
-                bot_log(f"🔍 Recognized Captcha: {captcha_text}", user_id)
-                
-                if captcha_text:
-                    captcha_input = driver.find_element(By.XPATH, XPATHS["captcha_input"])
-                    captcha_input.clear()
-                    captcha_input.send_keys(captcha_text)
-                    return captcha_text
-                else:
-                    bot_log("❌ No text recognized from CAPTCHA", user_id)
-            else:
-                bot_log(f"❌ OCR API error: {ocr_response.status_code}", user_id)
-        except Exception as api_error:
-            bot_log(f"❌ OCR API request failed: {str(api_error)}", user_id)
-        
+        captcha_path = "captcha_auto.png"
+
+        image_response = requests.get(captcha_url, timeout=30)
+        image_response.raise_for_status()
+        with open(captcha_path, "wb") as captcha_file:
+            captcha_file.write(image_response.content)
+
+        captcha_text = solve_captcha_locally(captcha_path, user_id)
+        if not captcha_text:
+            bot_log("🔄 Falling back to RapidAPI OCR", user_id)
+            captcha_text = solve_captcha_with_rapidapi(captcha_url, user_id)
+
+        if captcha_text:
+            captcha_input = driver.find_element(By.XPATH, XPATHS["captcha_input"])
+            captcha_input.clear()
+            captcha_input.send_keys(captcha_text)
+            return captcha_text
+
+        bot_log("❌ No text recognized from CAPTCHA", user_id)
         return None
     except Exception as e:
         bot_log(f"❌ Captcha processing failed: {str(e)}", user_id)
         return None
+
 
 def process_captcha_manual(driver, user_id):
     """Manual captcha handling"""
@@ -456,7 +518,7 @@ def post_login_operations(user_id):
 
     try:
         # Clean up captcha files
-        for file in ["captcha_manual.png"]:  # Only clean up manual captcha file
+        for file in ["captcha_auto.png", "captcha_manual.png"]:
             if os.path.exists(file):
                 os.remove(file)
 
