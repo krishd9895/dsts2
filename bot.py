@@ -1,53 +1,52 @@
-import telebot
-import ds
-import logging
 import os
-from session_manager_headless import session_manager
-from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
-from db import (
-    save_user_credentials,
-    get_user_usernames,
-    get_credential_by_username,
-    remove_user_credential,
-    remove_all_user_credentials
-)
-from logger import bot_logger, user_interaction_logger
+import threading
+import time
+from datetime import datetime
 
-# Initialize bot with your token
+import telebot
+from pytz import timezone
+from telebot.types import InlineKeyboardButton, InlineKeyboardMarkup
+
+import ds
+import schedule
+from db import (
+    get_credential_by_username,
+    get_user_usernames,
+    remove_all_user_credentials,
+    remove_user_credential,
+    save_user_credentials,
+)
+from logger import (
+    BOT_OWNER_ID,
+    MAX_LOG_LINES,
+    bot_logger,
+    log_file,
+    trim_log_file,
+    user_interaction_logger,
+)
+from session_manager_headless import session_manager
+
 API_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 bot = telebot.TeleBot(API_TOKEN)
 
-# Configure logging
-from logger import (
-    bot_logger, user_interaction_logger, login_logger, session_logger,
-    BOT_OWNER_ID, MAX_LOG_LINES, trim_log_file, log_file
-)
-
-# Log bot startup
 bot_logger.info('Starting bot...')
 
-# Set up periodic log trimming
-import threading
-import time
 
 def trim_logs_periodically():
     while True:
-        time.sleep(3600)  # Check every hour
+        time.sleep(3600)
         trim_log_file(log_file, MAX_LOG_LINES)
         bot_logger.info('Log file trimmed to keep latest lines')
 
-# Start log trimming thread
+
 trim_thread = threading.Thread(target=trim_logs_periodically, daemon=True)
 trim_thread.start()
 
-# User input handling
 ds.user_inputs = {}
-
-# User state tracking
 user_states = {}
 
+
 def create_credentials_keyboard(user_id):
-    """Create inline keyboard with user's credentials."""
     keyboard = InlineKeyboardMarkup()
     usernames = get_user_usernames(str(user_id))
     if not usernames:
@@ -57,8 +56,19 @@ def create_credentials_keyboard(user_id):
     keyboard.add(InlineKeyboardButton("❌ Cancel", callback_data="cancel"))
     return keyboard
 
+
+def create_rfentry_credentials_keyboard(user_id):
+    keyboard = InlineKeyboardMarkup()
+    usernames = get_user_usernames(str(user_id))
+    if not usernames:
+        return keyboard
+    for username in usernames:
+        keyboard.add(InlineKeyboardButton(username, callback_data=f"rfentry_{username}"))
+    keyboard.add(InlineKeyboardButton("❌ Cancel", callback_data="cancel"))
+    return keyboard
+
+
 def create_remove_credentials_keyboard(user_id):
-    """Create inline keyboard for removing credentials."""
     keyboard = InlineKeyboardMarkup()
     usernames = get_user_usernames(str(user_id))
     for username in usernames:
@@ -66,254 +76,309 @@ def create_remove_credentials_keyboard(user_id):
     keyboard.add(InlineKeyboardButton("❌ Cancel", callback_data="cancel"))
     return keyboard
 
+
 def create_settings_keyboard():
-    """Create inline keyboard for settings."""
     keyboard = InlineKeyboardMarkup()
     keyboard.row(
         InlineKeyboardButton("View Credentials", callback_data="view_creds"),
-        InlineKeyboardButton("Add Credential", callback_data="add_cred")
+        InlineKeyboardButton("Add Credential", callback_data="add_cred"),
     )
     keyboard.row(
         InlineKeyboardButton("Remove Credential", callback_data="remove_cred"),
-        InlineKeyboardButton("Remove All", callback_data="remove_all")
+        InlineKeyboardButton("Remove All", callback_data="remove_all"),
     )
     keyboard.row(InlineKeyboardButton("❌ Cancel", callback_data="cancel"))
     return keyboard
 
-# Start command handler
+
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     user_id = message.chat.id
     user_interaction_logger.info(f"User {user_id} sent /start: {message.text}")
     if session_manager.is_user_busy(user_id):
-        sent_msg = bot.send_message(user_id,
-                     "⚠️ Session is already active. Please wait for the current operation to complete or use /logout to reset.")
+        sent_msg = bot.send_message(
+            user_id,
+            "⚠️ Session is already active. Please wait for the current operation to complete or use /logout to reset.",
+        )
         ds.last_message_id[user_id] = sent_msg.message_id
-        user_interaction_logger.info(f"Bot to {user_id}: Session is already active.")
         return
 
-    ds.clear_status(user_id)  # Clear any existing status
+    ds.clear_status(user_id)
     ds.set_bot_instance(bot, user_id)
     session_manager.get_session(user_id)
-    sent_msg = bot.send_message(user_id, '👋 Welcome! I\'m ready to help you. Use /login to begin or /settings to manage your credentials.')
+    sent_msg = bot.send_message(
+        user_id,
+        "👋 Welcome! I'm ready to help you. Use /login to begin or /settings to manage your credentials.",
+    )
     ds.last_message_id[user_id] = sent_msg.message_id
-    user_interaction_logger.info(f"Bot to {user_id}: 👋 Welcome! I'm ready to help you. Use /login to begin or /settings to manage your credentials.")
 
-# Login command handler
+
 @bot.message_handler(commands=['login'])
 def handle_login(message):
     user_id = message.chat.id
-    user_interaction_logger.info(f"User {user_id} sent /login: {message.text}")
-    
+
     if session_manager.is_user_busy(user_id):
-        sent_msg = bot.send_message(user_id,
-                     "⚠️ Session is already active. Please wait for the current operation to complete or use /logout to reset.")
+        sent_msg = bot.send_message(
+            user_id,
+            "⚠️ Session is already active. Please wait for the current operation to complete or use /logout to reset.",
+        )
         ds.last_message_id[user_id] = sent_msg.message_id
-        user_interaction_logger.info(f"Bot to {user_id}: Session is already active.")
         return
 
     if not session_manager.can_attempt_login(user_id):
-        sent_msg = bot.send_message(user_id,
-                     "⚠️ Please wait 5 seconds before attempting to login again.")
+        sent_msg = bot.send_message(user_id, "⚠️ Please wait 5 seconds before attempting to login again.")
         ds.last_message_id[user_id] = sent_msg.message_id
-        user_interaction_logger.info(f"Bot to {user_id}: Login cooldown active.")
         return
 
-    # Check for credentials before creating keyboard
     usernames = get_user_usernames(str(user_id))
-    user_interaction_logger.info(f"Found {len(usernames)} credentials for user {user_id}")
-    
     if not usernames:
         keyboard = create_settings_keyboard()
-        sent_msg = bot.send_message(user_id, "❌ No saved credentials found. Use the menu below to add your credentials:", reply_markup=keyboard)
+        sent_msg = bot.send_message(
+            user_id,
+            "❌ No saved credentials found. Use the menu below to add your credentials:",
+            reply_markup=keyboard,
+        )
         ds.last_message_id[user_id] = sent_msg.message_id
-        user_interaction_logger.info(f"Bot to {user_id}: No saved credentials, showing settings menu.")
         return
 
     keyboard = create_credentials_keyboard(user_id)
     sent_msg = bot.send_message(user_id, "Select a username to login:", reply_markup=keyboard)
     ds.last_message_id[user_id] = sent_msg.message_id
-    user_interaction_logger.info(f"Bot to {user_id}: Showing credential selection keyboard with {len(usernames)} options.")
 
-# Settings command handler
+
+@bot.message_handler(commands=['rfentry'])
+def handle_rf_entry(message):
+    user_id = message.chat.id
+    ds.set_bot_instance(bot, user_id)
+
+    now_ist_time = datetime.now(timezone('Asia/Kolkata')).time()
+    if not (schedule.SCHEDULE_START_TIME <= now_ist_time <= schedule.SCHEDULE_END_TIME):
+        ds.bot_log(
+            f"❌ Scheduling is only allowed between {schedule.SCHEDULE_START_TIME.strftime('%I:%M %p')} and {schedule.SCHEDULE_END_TIME.strftime('%I:%M %p')} IST.",
+            user_id,
+        )
+        return
+
+    if session_manager.is_user_busy(user_id):
+        sent_msg = bot.send_message(user_id, "⚠️ A session is already active. Please wait or use /logout.")
+        ds.last_message_id[user_id] = sent_msg.message_id
+        return
+
+    usernames = get_user_usernames(str(user_id))
+    if not usernames:
+        keyboard = create_settings_keyboard()
+        sent_msg = bot.send_message(
+            user_id,
+            "❌ No saved credentials found. Please add credentials first.",
+            reply_markup=keyboard,
+        )
+        ds.last_message_id[user_id] = sent_msg.message_id
+        return
+
+    keyboard = create_rfentry_credentials_keyboard(user_id)
+    sent_msg = bot.send_message(
+        user_id,
+        "Select a username to schedule an RF entry for 8:30 AM IST:",
+        reply_markup=keyboard,
+    )
+    ds.last_message_id[user_id] = sent_msg.message_id
+
+
+@bot.message_handler(commands=['values'])
+def handle_values(message):
+    user_id = message.chat.id
+    ds.set_bot_instance(bot, user_id)
+
+    scheduled_jobs = schedule.get_scheduled_jobs_for_user(user_id)
+    if not scheduled_jobs:
+        ds.bot_log("ℹ️ You have no scheduled entries.", user_id)
+        return
+
+    keyboard = InlineKeyboardMarkup()
+    message_text = "Your currently scheduled entries:\n\n"
+    for job in scheduled_jobs:
+        username = job['username']
+        value = job['value']
+        message_text += f"👤 **Username:** `{username}`\n💾 **Value:** `{value}`\n\n"
+        keyboard.add(
+            InlineKeyboardButton(
+                f"❌ Cancel for {username}",
+                callback_data=f"cancel_schedule_{username}",
+            )
+        )
+
+    keyboard.add(InlineKeyboardButton("✅ Close", callback_data="cancel"))
+    ds.bot_log(message_text, user_id, reply_markup=keyboard, parse_mode="Markdown")
+
+
 @bot.message_handler(commands=['settings'])
 def handle_settings(message):
     user_id = message.chat.id
-    user_interaction_logger.info(f"User {user_id} sent /settings: {message.text}")
     keyboard = create_settings_keyboard()
     sent_msg = bot.send_message(user_id, "Credential Management Settings:", reply_markup=keyboard)
     ds.last_message_id[user_id] = sent_msg.message_id
-    user_interaction_logger.info(f"Bot to {user_id}: Credential Management Settings:")
 
-# Logout command handler
+
 @bot.message_handler(commands=['logout'])
 def handle_logout(message):
     user_id = message.chat.id
-    user_interaction_logger.info(f"User {user_id} sent /logout: {message.text}")
-    ds.clear_status(user_id)  # Clear any existing status
+    ds.set_bot_instance(bot, user_id)
+    ds.clear_status(user_id)
     session_manager.close_session(user_id)
     sent_msg = bot.send_message(user_id, '👋 Logged out successfully.')
     ds.last_message_id[user_id] = sent_msg.message_id
-    user_interaction_logger.info(f"Bot to {user_id}: 👋 Logged out successfully.")
 
-# Logs command handler
+
 @bot.message_handler(commands=['logs'])
 def handle_logs(message):
     user_id = message.chat.id
-    user_interaction_logger.info(f"User {user_id} sent /logs: {message.text}")
-    
     if user_id != BOT_OWNER_ID:
         sent_msg = bot.send_message(user_id, "⚠️ This command is only available to the bot owner.")
         ds.last_message_id[user_id] = sent_msg.message_id
-        user_interaction_logger.info(f"Bot to {user_id}: Command not available - not owner")
         return
-    
+
     try:
-        # Trim logs before sending
         trim_log_file(log_file, MAX_LOG_LINES)
-        
-        # Send the log file
         with open(log_file, 'rb') as f:
             sent_msg = bot.send_document(user_id, f, caption="📋 Here are the latest logs.")
             ds.last_message_id[user_id] = sent_msg.message_id
-            user_interaction_logger.info(f"Bot to {user_id}: Sent log file")
     except Exception as e:
         sent_msg = bot.send_message(user_id, f"❌ Error sending logs: {str(e)}")
         ds.last_message_id[user_id] = sent_msg.message_id
-        user_interaction_logger.error(f"Error sending logs to owner: {str(e)}")
 
-# Operations command handler
+
 @bot.message_handler(commands=['operations'])
 def handle_operations(message):
     user_id = message.chat.id
-    user_interaction_logger.info(f"User {user_id} sent /operations: {message.text}")
-    
-    # Check if user has an active session
     if user_id not in session_manager.sessions or not session_manager.sessions[user_id].get('driver'):
         usernames = get_user_usernames(str(user_id))
         if not usernames:
             keyboard = create_settings_keyboard()
-            sent_msg = bot.send_message(user_id, "❌ No saved credentials found. Use the menu below to add your credentials:", reply_markup=keyboard)
+            sent_msg = bot.send_message(
+                user_id,
+                "❌ No saved credentials found. Use the menu below to add your credentials:",
+                reply_markup=keyboard,
+            )
         else:
             keyboard = create_credentials_keyboard(user_id)
-            sent_msg = bot.send_message(user_id, "⚠️ Please login first to perform operations.", reply_markup=keyboard)
+            sent_msg = bot.send_message(
+                user_id,
+                "⚠️ Please login first to perform operations.",
+                reply_markup=keyboard,
+            )
         ds.last_message_id[user_id] = sent_msg.message_id
-        user_interaction_logger.info(f"Bot to {user_id}: Please login first to perform operations.")
         return
 
     if session_manager.is_user_busy(user_id):
-        sent_msg = bot.send_message(user_id,
-                     "⚠️ Session is already active. Please wait for the current operation to complete or use /logout to reset.")
+        sent_msg = bot.send_message(
+            user_id,
+            "⚠️ Session is already active. Please wait for the current operation to complete or use /logout to reset.",
+        )
         ds.last_message_id[user_id] = sent_msg.message_id
-        user_interaction_logger.info(f"Bot to {user_id}: Session is already active.")
         return
 
-    ds.clear_status(user_id)  # Clear any existing status
+    ds.clear_status(user_id)
     ds.set_bot_instance(bot, user_id)
     session_manager.set_user_busy(user_id, True)
     try:
         ds.post_login_operations(user_id)
-    except Exception as e:
-        sent_msg = bot.send_message(user_id, "⚠️ Please login first to perform operations.")
-        ds.last_message_id[user_id] = sent_msg.message_id
-        user_interaction_logger.info(f"Bot to {user_id}: Please login first to perform operations.")
     finally:
         session_manager.set_user_busy(user_id, False)
 
-# Callback query handler
+
 @bot.callback_query_handler(func=lambda call: True)
 def handle_callback(call):
     user_id = call.message.chat.id
     data = call.data
-    user_interaction_logger.info(f"User {user_id} callback: {data}")
 
     if data == "cancel":
         bot.answer_callback_query(call.id, "Operation cancelled")
-        # Delete the message containing the cancel button
         try:
             bot.delete_message(user_id, call.message.message_id)
-        except:
+        except Exception:
             pass
-        ds.clear_status(user_id)  # Clear any existing status message
+        ds.clear_status(user_id)
         sent_msg = bot.send_message(user_id, "Operation cancelled.")
         ds.last_message_id[user_id] = sent_msg.message_id
-        user_interaction_logger.info(f"Bot to {user_id}: Operation cancelled.")
         if user_id in user_states:
             del user_states[user_id]
         return
 
-    if data.startswith("login_"):
-        # Get the full username by removing just the 'login_' prefix
-        username = data[6:]
-        bot_logger.info(f"Login button clicked for user {user_id} with username {username}")
-        bot.answer_callback_query(call.id, f"Attempting to login with {username}...")
-        user_interaction_logger.info(f"Bot to {user_id}: Attempting to login with {username}...")
-        
-        # Delete the message containing the username button
+    if data.startswith("cancel_schedule_"):
+        username_to_cancel = data[16:]
+        bot.answer_callback_query(call.id, f"Cancelling schedule for {username_to_cancel}...")
+        schedule.clear_job(user_id, username_to_cancel)
         try:
             bot.delete_message(user_id, call.message.message_id)
-        except:
+        except Exception:
+            pass
+        ds.bot_log(f"✅ The scheduled entry for {username_to_cancel} has been cancelled.", user_id)
+        return
+
+    if data.startswith("rfentry_"):
+        username = data[8:]
+        bot.answer_callback_query(call.id, f"Scheduling for {username}...")
+        try:
+            bot.delete_message(user_id, call.message.message_id)
+        except Exception:
             pass
 
-        try:
-            credentials = get_credential_by_username(str(user_id), username)
-            if not credentials:
-                bot_logger.warning(f"No credentials found for user {user_id} with username {username}")
-                ds.clear_status(user_id)  # Clear any existing status message
-                sent_msg = bot.send_message(user_id, f"❌ Credentials not found for {username}")
-                ds.last_message_id[user_id] = sent_msg.message_id
-                user_interaction_logger.info(f"Bot to {user_id}: ❌ Credentials not found for {username}")
-                return
-                
-            bot_logger.debug(f"Credentials found for user {user_id}")
-            ds.clear_status(user_id)
-            ds.set_bot_instance(bot, user_id)
-            
-            try:
-                # Initialize session first
-                bot_logger.debug(f"Initializing session for user {user_id}")
-                session = session_manager.get_session(user_id)
-                if not session:
-                    bot_logger.error(f"Failed to initialize session for user {user_id}")
-                    sent_msg = bot.send_message(user_id, f"❌ Failed to initialize session")
-                    ds.last_message_id[user_id] = sent_msg.message_id
-                    user_interaction_logger.info(f"Bot to {user_id}: ❌ Failed to initialize session")
-                    return
-                
-                bot_logger.debug(f"Session initialized successfully for user {user_id}")
-                session_manager.set_user_busy(user_id, True)
-                
-                success = ds.handle_login_attempt(user_id, credentials["username"], credentials["password"])
-                if not success:
-                    bot_logger.warning(f"Login failed for user {user_id} with username {username}")
-                    session_manager.close_session(user_id)
-                    sent_msg = bot.send_message(user_id, f"❌ Login failed for {username}")
-                    ds.last_message_id[user_id] = sent_msg.message_id
-                    user_interaction_logger.info(f"Bot to {user_id}: ❌ Login failed for {username}")
-                else:
-                    bot_logger.info(f"Login successful for user {user_id} with username {username}")
-                    sent_msg = bot.send_message(user_id, f"✅ Successfully logged in as {username}")
-                    ds.last_message_id[user_id] = sent_msg.message_id
-                    user_interaction_logger.info(f"Bot to {user_id}: ✅ Successfully logged in as {username}")
-            except Exception as e:
-                bot_logger.error(f"Error during login for user {user_id}: {str(e)}")
-                sent_msg = bot.send_message(user_id, f"❌ Error during login: {str(e)}")
-                ds.last_message_id[user_id] = sent_msg.message_id
-                user_interaction_logger.info(f"Bot to {user_id}: ❌ Error during login: {str(e)}")
-                session_manager.close_session(user_id)
-            finally:
-                session_manager.set_user_busy(user_id, False)
-        except Exception as e:
-            bot_logger.error(f"Error handling login callback for user {user_id}: {str(e)}")
-            sent_msg = bot.send_message(user_id, f"❌ Internal error occurred")
-            ds.last_message_id[user_id] = sent_msg.message_id
-            user_interaction_logger.info(f"Bot to {user_id}: ❌ Internal error occurred")
+        ds.set_bot_instance(bot, user_id)
+        value = ds.bot_input(f"Please enter the value to be submitted for {username}:", user_id)
 
-    elif data == "view_creds":
-        # Delete the message containing the view credentials button
+        if value:
+            schedule.schedule_rf_entry(user_id, username, value)
+            ds.bot_log(
+                f"✅ RF entry for {username} with value '{value}' has been scheduled. It will run after {schedule.RUN_AFTER_TIME.strftime('%I:%M %p')} IST.",
+                user_id,
+            )
+        else:
+            ds.bot_log("⚠️ Value not provided. Scheduling cancelled.", user_id)
+        return
+
+    if data.startswith("login_"):
+        username = data[6:]
+        bot.answer_callback_query(call.id, f"Attempting to login with {username}...")
         try:
             bot.delete_message(user_id, call.message.message_id)
-        except:
+        except Exception:
+            pass
+
+        credentials = get_credential_by_username(str(user_id), username)
+        if not credentials:
+            sent_msg = bot.send_message(user_id, f"❌ Credentials not found for {username}")
+            ds.last_message_id[user_id] = sent_msg.message_id
+            return
+
+        ds.clear_status(user_id)
+        ds.set_bot_instance(bot, user_id)
+
+        try:
+            session = session_manager.get_session(user_id)
+            if not session:
+                sent_msg = bot.send_message(user_id, "❌ Failed to initialize session")
+                ds.last_message_id[user_id] = sent_msg.message_id
+                return
+
+            session_manager.set_user_busy(user_id, True)
+            success = ds.handle_login_attempt(user_id, credentials["username"], credentials["password"])
+            if not success:
+                session_manager.close_session(user_id)
+            else:
+                ds.post_login_operations(user_id)
+                session_manager.close_session(user_id)
+        except Exception as e:
+            sent_msg = bot.send_message(user_id, f"❌ Error during login: {str(e)}")
+            ds.last_message_id[user_id] = sent_msg.message_id
+            session_manager.close_session(user_id)
+        finally:
+            session_manager.set_user_busy(user_id, False)
+        return
+
+    if data == "view_creds":
+        try:
+            bot.delete_message(user_id, call.message.message_id)
+        except Exception:
             pass
 
         usernames = get_user_usernames(str(user_id))
@@ -321,177 +386,133 @@ def handle_callback(call):
             keyboard = InlineKeyboardMarkup()
             creds_list = "Your saved credentials:\n" + "\n".join([f"- {username}" for username in usernames])
             keyboard.add(InlineKeyboardButton("❌ Close", callback_data="cancel"))
-            bot.answer_callback_query(call.id)
-            ds.clear_status(user_id)  # Clear any existing status message
+            ds.clear_status(user_id)
             sent_msg = bot.send_message(user_id, creds_list, reply_markup=keyboard)
             ds.last_message_id[user_id] = sent_msg.message_id
-            user_interaction_logger.info(f"Bot to {user_id}: {creds_list}")
         else:
-            ds.clear_status(user_id)  # Clear any existing status message
+            ds.clear_status(user_id)
             sent_msg = bot.send_message(user_id, "No credentials found.")
             ds.last_message_id[user_id] = sent_msg.message_id
-            bot.answer_callback_query(call.id)
-            user_interaction_logger.info(f"Bot to {user_id}: No credentials found.")
+        bot.answer_callback_query(call.id)
+        return
 
-    elif data == "add_cred":
-        # Delete the message containing the add credential button
+    if data == "add_cred":
         try:
             bot.delete_message(user_id, call.message.message_id)
-        except:
+        except Exception:
             pass
 
         user_states[user_id] = {"state": "waiting_username"}
         keyboard = InlineKeyboardMarkup()
         keyboard.add(InlineKeyboardButton("❌ Cancel", callback_data="cancel"))
         bot.answer_callback_query(call.id)
-        ds.clear_status(user_id)  # Clear any existing status message
+        ds.clear_status(user_id)
         sent_msg = bot.send_message(user_id, "Please enter your username:", reply_markup=keyboard)
         ds.last_message_id[user_id] = sent_msg.message_id
-        user_interaction_logger.info(f"Bot to {user_id}: Please enter your username:")
+        return
 
-    elif data == "remove_cred":
-        # Delete the message containing the remove credential button
+    if data == "remove_cred":
         try:
             bot.delete_message(user_id, call.message.message_id)
-        except:
+        except Exception:
             pass
 
         keyboard = create_remove_credentials_keyboard(user_id)
-        if keyboard.keyboard:  # Check if there are any credentials
+        if keyboard.keyboard:
             bot.answer_callback_query(call.id)
-            ds.clear_status(user_id)  # Clear any existing status message
+            ds.clear_status(user_id)
             sent_msg = bot.send_message(user_id, "Select credential to remove:", reply_markup=keyboard)
             ds.last_message_id[user_id] = sent_msg.message_id
-            user_interaction_logger.info(f"Bot to {user_id}: Select credential to remove:")
         else:
-            ds.clear_status(user_id)  # Clear any existing status message
+            ds.clear_status(user_id)
             sent_msg = bot.send_message(user_id, "No credentials found to remove.")
             ds.last_message_id[user_id] = sent_msg.message_id
             bot.answer_callback_query(call.id)
-            user_interaction_logger.info(f"Bot to {user_id}: No credentials found to remove.")
+        return
 
-    elif data.startswith("remove_"):
-        # Delete the message containing the remove username button
+    if data.startswith("remove_"):
         try:
             bot.delete_message(user_id, call.message.message_id)
-        except:
+        except Exception:
             pass
 
-        username = data[7:]  # Get username after 'remove_'
-        bot_logger.info(f"Attempting to remove credentials for user {user_id} with username {username}")
-        
+        username = data[7:]
         if remove_user_credential(str(user_id), username):
             bot.answer_callback_query(call.id, f"Removed credentials for {username}")
             keyboard = create_settings_keyboard()
-            ds.clear_status(user_id)  # Clear any existing status message
+            ds.clear_status(user_id)
             sent_msg = bot.send_message(user_id, f"✅ Removed credentials for {username}", reply_markup=keyboard)
             ds.last_message_id[user_id] = sent_msg.message_id
-            user_interaction_logger.info(f"Bot to {user_id}: ✅ Removed credentials for {username}")
         else:
-            bot_logger.warning(f"Failed to remove credentials for user {user_id} with username {username}")
-            ds.clear_status(user_id)  # Clear any existing status message
+            ds.clear_status(user_id)
             sent_msg = bot.send_message(user_id, f"❌ Failed to remove credentials for {username}")
             ds.last_message_id[user_id] = sent_msg.message_id
             bot.answer_callback_query(call.id)
-            user_interaction_logger.info(f"Bot to {user_id}: ❌ Failed to remove credentials for {username}")
+        return
 
-    elif data == "remove_all":
-        # Delete the message containing the remove all button
+    if data == "remove_all":
         try:
             bot.delete_message(user_id, call.message.message_id)
-        except:
+        except Exception:
             pass
 
         if remove_all_user_credentials(str(user_id)):
             bot.answer_callback_query(call.id, "All credentials removed")
             keyboard = create_settings_keyboard()
-            ds.clear_status(user_id)  # Clear any existing status message
-            sent_msg = bot.send_message(user_id, "✅ All credentials have been removed.", reply_markup=keyboard)
+            ds.clear_status(user_id)
+            sent_msg = bot.send_message(
+                user_id,
+                "✅ All credentials have been removed.",
+                reply_markup=keyboard,
+            )
             ds.last_message_id[user_id] = sent_msg.message_id
-            user_interaction_logger.info(f"Bot to {user_id}: ✅ All credentials have been removed.")
         else:
-            ds.clear_status(user_id)  # Clear any existing status message
+            ds.clear_status(user_id)
             sent_msg = bot.send_message(user_id, "Failed to remove credentials")
             ds.last_message_id[user_id] = sent_msg.message_id
             bot.answer_callback_query(call.id)
-            user_interaction_logger.info(f"Bot to {user_id}: Failed to remove credentials")
 
-# Update the input handler
+
 @bot.message_handler(func=lambda message: True)
 def handle_user_input(message):
     user_id = message.chat.id
     text = message.text
-    user_interaction_logger.info(f"User {user_id} input: {text}")
 
-    # Delete user's message for security
     try:
         bot.delete_message(user_id, message.message_id)
-    except:
+    except Exception:
         pass
 
-    # Handle CAPTCHA input
     if user_id in ds.user_inputs and ds.user_inputs[user_id] is None:
         ds.user_inputs[user_id] = text
-        # Delete previous bot message if exists
         if hasattr(message, 'reply_to_message') and message.reply_to_message:
             try:
                 bot.delete_message(user_id, message.reply_to_message.message_id)
-            except:
+            except Exception:
                 pass
-        sent_msg = bot.send_message(user_id, '✅ CAPTCHA received!')
-        user_interaction_logger.info(f"Bot to {user_id}: ✅ CAPTCHA received!")
-        # Store message ID for later deletion
-        ds.last_message_id[user_id] = sent_msg.message_id
         return
 
-    # Handle credential input
     if user_id in user_states:
         state = user_states[user_id].get('state')
         if state == 'waiting_username':
             user_states[user_id] = {'state': 'waiting_password', 'username': text}
             keyboard = InlineKeyboardMarkup()
             keyboard.add(InlineKeyboardButton("❌ Cancel", callback_data="cancel"))
-            # Delete previous bot message if exists
-            if hasattr(message, 'reply_to_message') and message.reply_to_message:
-                try:
-                    bot.delete_message(user_id, message.reply_to_message.message_id)
-                except:
-                    pass
             sent_msg = bot.send_message(user_id, "Please enter your password:", reply_markup=keyboard)
-            user_interaction_logger.info(f"Bot to {user_id}: Please enter your password:")
-            # Store message ID for later deletion
             ds.last_message_id[user_id] = sent_msg.message_id
-
         elif state == 'waiting_password':
             username = user_states[user_id].get('username')
+            keyboard = create_settings_keyboard()
             if save_user_credentials(str(user_id), username, text):
-                keyboard = create_settings_keyboard()
-                # Delete previous bot message if exists
-                if hasattr(message, 'reply_to_message') and message.reply_to_message:
-                    try:
-                        bot.delete_message(user_id, message.reply_to_message.message_id)
-                    except:
-                        pass
                 sent_msg = bot.send_message(user_id, f"✅ Credentials saved for {username}", reply_markup=keyboard)
-                user_interaction_logger.info(f"Bot to {user_id}: ✅ Credentials saved for {username}")
-                # Store message ID for later deletion
-                ds.last_message_id[user_id] = sent_msg.message_id
             else:
-                keyboard = create_settings_keyboard()
-                # Delete previous bot message if exists
-                if hasattr(message, 'reply_to_message') and message.reply_to_message:
-                    try:
-                        bot.delete_message(user_id, message.reply_to_message.message_id)
-                    except:
-                        pass
                 sent_msg = bot.send_message(user_id, "❌ Failed to save credentials", reply_markup=keyboard)
-                user_interaction_logger.info(f"Bot to {user_id}: ❌ Failed to save credentials")
-                # Store message ID for later deletion
-                ds.last_message_id[user_id] = sent_msg.message_id
+            ds.last_message_id[user_id] = sent_msg.message_id
+            del user_states[user_id]
 
-            del user_states[user_id]  # Clear the state
 
-# Start the bot
 if __name__ == '__main__':
     bot_logger.info('Starting bot...')
+    bot_logger.info('Starting scheduler...')
+    schedule.start_scheduler()
     bot.infinity_polling()
