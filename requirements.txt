@@ -1,6 +1,8 @@
-telebot
+pyTelegramBotAPI
 selenium
-webdriver-manager
 requests
 pymongo
-flask
+pillow
+pytesseract
+python-dotenv
+pytz
